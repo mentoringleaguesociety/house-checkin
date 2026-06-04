@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gerador de Check-in — MLS</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f3ef;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 48px 16px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 40px 44px;
+      width: 100%;
+      max-width: 560px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 24px rgba(0,0,0,0.06);
+    }
+    .logo { font-size: 11px; font-weight: 600; letter-spacing: 3px; color: #aaa; text-transform: uppercase; margin-bottom: 28px; }
+    h1 { font-size: 22px; font-weight: 600; color: #111; margin-bottom: 6px; }
+    .subtitle { font-size: 14px; color: #888; margin-bottom: 32px; line-height: 1.5; }
+    .field { margin-bottom: 20px; }
+    label { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0.5px; color: #555; text-transform: uppercase; margin-bottom: 8px; }
+    input[type="text"], textarea {
+      width: 100%; padding: 11px 14px; font-size: 14px; font-family: inherit;
+      border: 1.5px solid #e0ddd8; border-radius: 8px; background: #faf9f7;
+      color: #111; transition: border-color 0.15s; outline: none;
+    }
+    input[type="text"]:focus, textarea:focus { border-color: #111; background: #fff; }
+    textarea { resize: vertical; min-height: 108px; line-height: 1.6; }
+    .hint { font-size: 12px; color: #aaa; margin-top: 6px; line-height: 1.5; }
+    .actions { display: flex; gap: 10px; margin-top: 28px; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 11px 20px; font-size: 14px; font-weight: 500; font-family: inherit;
+      border-radius: 8px; cursor: pointer; border: 1.5px solid #e0ddd8;
+      background: transparent; color: #333; transition: background 0.12s, border-color 0.12s;
+    }
+    .btn:hover { background: #f5f3ef; }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary { background: #111; color: #fff; border-color: transparent; }
+    .btn-primary:hover { background: #2a2a2a; }
+    .btn-primary:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+    .divider { border: none; border-top: 1px solid #f0ede8; margin: 32px 0; }
+    .preview-label { font-size: 12px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: #aaa; margin-bottom: 16px; }
+    .pages-grid { display: flex; gap: 12px; flex-wrap: wrap; }
+    .page-thumb {
+      background: #fff; border: 1px solid #e8e5e0; border-radius: 6px;
+      width: 130px; min-height: 184px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 14px 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .page-thumb .checkin-label { font-size: 7px; font-weight: 600; letter-spacing: 3px; color: #999; text-transform: uppercase; margin-bottom: 8px; }
+    .page-thumb img { width: 78px; height: 78px; }
+    .page-thumb .club-name { font-size: 6px; font-weight: 700; color: #111; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 10px; text-align: center; line-height: 1.4; word-break: break-word; }
+    .page-thumb .date-label { font-size: 5px; font-weight: 400; color: #999; margin-top: 3px; text-align: center; letter-spacing: 1px; }
+    #status { font-size: 13px; color: #888; margin-top: 12px; min-height: 20px; }
+    #status.ok { color: #2a7a4f; }
+    #status.err { color: #c0392b; }
+    #hidden-qr { position: absolute; left: -9999px; top: 0; }
+    @media (max-width: 480px) { .card { padding: 28px 20px; } h1 { font-size: 20px; } }
+  </style>
+</head>
+<body>
+<div id="hidden-qr"></div>
+<div class="card">
+  <div class="logo">MLS</div>
+  <h1>Gerador de check-in</h1>
+  <p class="subtitle">Preencha os campos abaixo e baixe o PDF pronto para impressão.</p>
+
+  <div class="field">
+    <label>URL do QR code</label>
+    <input type="text" id="qr-url" placeholder="https://..." autocomplete="off" />
+    <p class="hint">Link que será codificado no QR code.</p>
+  </div>
+
+  <div class="field">
+    <label>Nomes dos clubes / eventos</label>
+    <textarea id="club-names" placeholder="CLAXCLUB&#10;MARCANTE&#10;MENTOREASY CLUB"></textarea>
+    <p class="hint">Um nome por linha — cada um vira uma página no PDF.</p>
+  </div>
+
+  <div class="field">
+    <label>Data do evento</label>
+    <input type="text" id="event-date" placeholder="29.05.2025" autocomplete="off" />
+    <p class="hint">Aparece abaixo do nome do clube. Deixe em branco para omitir.</p>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" onclick="generatePreview()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      Pré-visualizar
+    </button>
+    <button class="btn" id="btn-pdf" onclick="downloadPDF()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Baixar PDF
+    </button>
+  </div>
+
+  <div id="status"></div>
+
+  <div id="preview-section" style="display:none">
+    <hr class="divider" />
+    <p class="preview-label">Preview</p>
+    <div class="pages-grid" id="pages-grid"></div>
+  </div>
+</div>
+
+<script>
+  function getInputs() {
+    const url = document.getElementById('qr-url').value.trim();
+    const raw = document.getElementById('club-names').value.trim();
+    const clubs = raw.split('\n').map(s => s.trim()).filter(Boolean);
+    const date = document.getElementById('event-date').value.trim();
+    return { url, clubs, date };
+  }
+
+  function setStatus(msg, type) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = type || '';
+  }
+
+  function makeQR(url, size) {
+    return new Promise((resolve) => {
+      const div = document.createElement('div');
+      document.getElementById('hidden-qr').appendChild(div);
+      new QRCode(div, { text: url, width: size, height: size, correctLevel: QRCode.CorrectLevel.M });
+      setTimeout(() => {
+        const img = div.querySelector('img');
+        const cv = div.querySelector('canvas');
+        let dataUrl = img ? img.src : (cv ? cv.toDataURL('image/png') : '');
+        div.remove();
+        resolve(dataUrl);
+      }, 280);
+    });
+  }
+
+  /* Draw spaced text centered on page — mirrors Python logic */
+  function drawSpacedCentered(doc, text, fontName, fontSize, yMM, spacing, rgb) {
+    doc.setFont(fontName, fontName === 'helvetica' ? 'normal' : 'bold');
+    doc.setFontSize(fontSize);
+    doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+    const W = 210;
+    // measure total width
+    let total = 0;
+    for (let ch of text) total += doc.getStringUnitWidth(ch) * fontSize / doc.internal.scaleFactor;
+    total += spacing * (text.length - 1);
+    let x = (W - total) / 2;
+    for (let ch of text) {
+      doc.text(ch, x, yMM);
+      x += doc.getStringUnitWidth(ch) * fontSize / doc.internal.scaleFactor + spacing;
+    }
+  }
+
+  async function buildDoc(url, clubs, date) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const W = 210, H = 297;
+
+    // Register custom font if uploaded
+    let fontFace = 'helvetica';
+    let fontStyle = 'normal';
+
+    const qrData = await makeQR(url, 600);
+    const qrSize = 95;
+    const qrX = (W - qrSize) / 2;
+    const qrY = H * 0.345;
+
+    clubs.forEach((club, i) => {
+      if (i > 0) doc.addPage();
+
+      doc.setFillColor(255, 255, 255);
+      doc.rect(0, 0, W, H, 'F');
+
+      // CHECK-IN — above QR, bold, letter-spaced
+      const ciY = qrY - 12;
+      doc.setFont(fontFace, 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(110, 110, 110);
+      const ciText = 'CHECK-IN';
+      let xci = (W - (doc.getStringUnitWidth(ciText) * 16 / doc.internal.scaleFactor) - 5 * (ciText.length - 1)) / 2;
+      for (let ch of ciText) {
+        doc.text(ch, xci, ciY);
+        xci += doc.getStringUnitWidth(ch) * 16 / doc.internal.scaleFactor + 5;
+      }
+
+      // QR code
+      doc.addImage(qrData, 'PNG', qrX, qrY, qrSize, qrSize);
+
+      // Club name — below QR, smaller, centered, spaced
+      const clubY = qrY + qrSize + 26;
+      doc.setFont(fontFace, 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(18, 18, 18);
+      const clubText = club.toUpperCase();
+      const sp = 2.5;
+      let totalW = 0;
+      for (let ch of clubText) totalW += doc.getStringUnitWidth(ch) * 10 / doc.internal.scaleFactor;
+      totalW += sp * (clubText.length - 1);
+      let xclub = (W - totalW) / 2;
+      for (let ch of clubText) {
+        doc.text(ch, xclub, clubY);
+        xclub += doc.getStringUnitWidth(ch) * 10 / doc.internal.scaleFactor + sp;
+      }
+
+      // Date — below club name
+      if (date) {
+        const dateY = clubY + 7;
+        doc.setFont(fontFace, 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(140, 140, 140);
+        const dateText = date;
+        const sp2 = 1.5;
+        let totalD = 0;
+        for (let ch of dateText) totalD += doc.getStringUnitWidth(ch) * 9 / doc.internal.scaleFactor;
+        totalD += sp2 * (dateText.length - 1);
+        let xdate = (W - totalD) / 2;
+        for (let ch of dateText) {
+          doc.text(ch, xdate, dateY);
+          xdate += doc.getStringUnitWidth(ch) * 9 / doc.internal.scaleFactor + sp2;
+        }
+      }
+    });
+
+    return doc;
+  }
+
+  async function generatePreview() {
+    const { url, clubs, date } = getInputs();
+    if (!url) { setStatus('⚠ Insira a URL do QR code.', 'err'); return; }
+    if (!clubs.length) { setStatus('⚠ Insira pelo menos um nome de clube.', 'err'); return; }
+    setStatus('Gerando preview...');
+    const qrData = await makeQR(url, 120);
+    const grid = document.getElementById('pages-grid');
+    grid.innerHTML = '';
+    clubs.forEach(club => {
+      const thumb = document.createElement('div');
+      thumb.className = 'page-thumb';
+      thumb.innerHTML = `
+        <span class="checkin-label">C H E C K - I N</span>
+        <img src="${qrData}" alt="QR Code" />
+        <span class="club-name">${club.toUpperCase()}</span>
+        ${date ? '<span class="date-label">'+date+'</span>' : ''}
+      `;
+      grid.appendChild(thumb);
+    });
+    document.getElementById('preview-section').style.display = 'block';
+    setStatus(clubs.length + ' página(s) gerada(s).', 'ok');
+  }
+
+  async function downloadPDF() {
+    const { url, clubs, date } = getInputs();
+    if (!url) { setStatus('⚠ Insira a URL do QR code.', 'err'); return; }
+    if (!clubs.length) { setStatus('⚠ Insira pelo menos um nome de clube.', 'err'); return; }
+    const btn = document.getElementById('btn-pdf');
+    btn.disabled = true;
+    setStatus('Gerando PDF...');
+    try {
+      const doc = await buildDoc(url, clubs, date);
+      const filename = 'checkin_' + clubs.join('-').replace(/\s+/g,'').slice(0,40).toLowerCase() + '.pdf';
+      doc.save(filename);
+      setStatus('✓ PDF baixado com ' + clubs.length + ' página(s).', 'ok');
+    } catch(e) {
+      setStatus('Erro ao gerar PDF. Tente novamente.', 'err');
+      console.error(e);
+    }
+    btn.disabled = false;
+  }
+</script>
+</body>
+</html>
